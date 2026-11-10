@@ -7,6 +7,10 @@
 // spawned from that host with the same flag, and the git argv is forwarded
 // unchanged. simple-git cannot take a creation flag, so its binary tuple is
 // [python, this host script].
+//
+// The host is the default. HERMES_DESKTOP_DIRECT_GIT=1 spawns git directly
+// instead (see gitHostEnabled below): it spares two interpreter starts per git
+// call, and is an opt-in until a packaged build has been shown not to flash.
 
 import { type ChildProcess, execFile, execFileSync, spawn, type SpawnOptions } from 'node:child_process'
 import fs from 'node:fs'
@@ -129,8 +133,24 @@ export function ensureNoConsoleGitScript(dir = os.tmpdir()) {
   return scriptPath
 }
 
+// The host puts two interpreter starts in front of every git call, and each is
+// a synchronous CreateProcess on Electron's main thread (#151348). Electron's
+// own spawn already starts a console child with CREATE_NO_WINDOW when none of
+// its stdio is inherited (libuv), and every git spawn here pipes or ignores all
+// three: from a dev-run Electron 44 main on Windows 11, git and the processes
+// git starts (sh, an alias's python) attached to one console that has no
+// window, with or without `windowsHide`.
+//
+// That is not evidence for a packaged build started from the shell, nor for
+// Windows Terminal as the default terminal, so the host stays the default and
+// HERMES_DESKTOP_DIRECT_GIT=1 is the opt-in. Read on every call, so a relaunch
+// with the variable set needs nothing else.
+export function gitHostEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.HERMES_DESKTOP_DIRECT_GIT !== '1'
+}
+
 export function windowsGitHost(isWindows = process.platform === 'win32'): NoConsoleGitHost | null {
-  if (!isWindows) {
+  if (!isWindows || !gitHostEnabled()) {
     return null
   }
 
