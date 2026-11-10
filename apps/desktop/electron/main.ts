@@ -38,7 +38,8 @@ import {
   screen,
   session,
   shell,
-  systemPreferences
+  systemPreferences,
+  utilityProcess
 } from 'electron'
 import type { Session } from 'electron'
 
@@ -416,6 +417,7 @@ import {
   withoutInteractiveOauthLogin
 } from './oauth-rest-request'
 import { wireOauthSessionResponse } from './oauth-session-response'
+import { spawn as offMainSpawn, startSpawnHost, stopSpawnHost, utilityProcessTransport } from './off-main-spawn'
 import { listWindowsProcesses, reapPackageRootedProcesses } from './package-process-reap'
 import {
   bundledPayload,
@@ -800,6 +802,8 @@ let f12Blocked = false
 // Dev (`pnpm run dev`) and prod both load the esbuild output from dist/.
 const PRELOAD_PATH = path.join(APP_ROOT, 'dist', 'electron-preload.js')
 const PREVIEW_GUEST_PRELOAD_PATH = path.join(APP_ROOT, 'dist', 'preview-guest-preload.js')
+// The utility-process entry that creates child processes off the UI thread (off-main-spawn.ts).
+const SPAWN_HOST_PATH = path.join(APP_ROOT, 'dist', 'spawn-host.cjs')
 
 // Remote displays (SSH X11 forwarding, VNC, RDP) make Chromium's GPU
 // compositor flicker — accelerated layers can't be presented cleanly over the
@@ -14364,7 +14368,7 @@ ipcMain.handle('hermes:ssh-config:resolve', async (_event, host) => {
   const ssh = desktopSshBinary()
 
   return new Promise((resolve, reject) => {
-    const child = spawn(ssh, ['-G', '--', value], hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
+    const child = offMainSpawn(ssh, ['-G', '--', value], hiddenWindowsChildOptions({ stdio: ['ignore', 'pipe', 'pipe'] }))
     let stdout = ''
     let stderr = ''
 
@@ -16425,6 +16429,7 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   closeGatewayTicketBridges()
   killTimedGitChildren()
+  stopSpawnHost()
   sshIsolatedKeepalives.stopAll()
   destroyKeepaliveAgents()
   nativeNotifications.dispose()
@@ -17558,6 +17563,18 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  // First, so the git, gh, launcher and helper starts below never create a
+  // process on the UI thread. HERMES_DESKTOP_SPAWN_HOST=0 keeps them in-process.
+  if (process.env.HERMES_DESKTOP_SPAWN_HOST !== '0' && fs.existsSync(SPAWN_HOST_PATH)) {
+    startSpawnHost(
+      () =>
+        utilityProcessTransport(
+          utilityProcess.fork(SPAWN_HOST_PATH, [], { serviceName: 'Hermes process spawner', stdio: 'ignore' })
+        ),
+      rememberLog
+    )
+  }
+
   if (NVIDIA_DRIVER_MAJOR !== null) {
     rememberLog(nvidiaEglRecovery.startupMessage)
   }

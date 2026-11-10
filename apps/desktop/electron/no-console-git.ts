@@ -8,10 +8,12 @@
 // unchanged. simple-git cannot take a creation flag, so its binary tuple is
 // [python, this host script].
 
-import { type ChildProcess, execFile, execFileSync, spawn, type SpawnOptions } from 'node:child_process'
+import { type ChildProcess, execFileSync, type SpawnOptions } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+import { execFile, spawn } from './off-main-spawn'
 
 export const CREATE_NO_WINDOW = 0x08000000
 

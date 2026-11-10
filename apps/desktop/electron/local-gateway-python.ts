@@ -1,8 +1,9 @@
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { statSync } from 'node:fs'
 import path from 'node:path'
 
 import type { GatewayTicketPurpose } from './local-gateway'
+import { spawn } from './off-main-spawn'
 import { hiddenWindowsChildOptions, windowsShellCommand } from './windows-child-options'
 
 interface TicketEndpoint {

@@ -4,7 +4,6 @@
 // results instead of hand-parsing porcelain. Reads degrade to null/empty on a
 // non-repo / remote backend; mutations reject so the renderer can toast.
 
-import { execFile } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -13,6 +12,7 @@ import { simpleGit } from 'simple-git'
 
 import { resolveRequestedPathForIpc } from './hardening'
 import { execGit, noConsoleGitEnv, simpleGitBinary, windowsGitHost } from './no-console-git'
+import { execFile } from './off-main-spawn'
 
 const COMMIT_CONTEXT_DIFF_MAX_CHARS = 120_000
 const COMMIT_CONTEXT_UNTRACKED_MAX = 80

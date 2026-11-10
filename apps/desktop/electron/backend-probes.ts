@@ -1,8 +1,8 @@
 /** Bounded backend probes. A file on disk is not proof of a usable runtime. */
 
-import { spawn } from 'node:child_process'
 
 import { buildDesktopBackendEnv } from './backend-env'
+import { spawn } from './off-main-spawn'
 import { windowsShellCommand } from './windows-child-options'
 
 /** Default probe budget. 5s false-negativeed healthy Windows cold starts (#61764). */

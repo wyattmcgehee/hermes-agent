@@ -5,9 +5,9 @@
  * live processes.
  */
 
-import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 
+import { execFile } from './off-main-spawn'
 import { electronProcessStartMarker } from './parent-process-identity'
 import { isPidAlive } from './update-marker'
 import { hiddenWindowsChildOptions } from './windows-child-options'

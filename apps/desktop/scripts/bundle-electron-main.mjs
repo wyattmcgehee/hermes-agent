@@ -30,7 +30,25 @@ function productIdentity(source, stamp) {
 /** Every file bundleElectronMain writes: the only outputs that bake the install stamp. */
 export const electronOutputs = Object.freeze({
   main: 'electron-main.mjs', preload: 'electron-preload.js', previewGuestPreload: 'preview-guest-preload.js',
+  spawnHost: 'spawn-host.cjs',
 })
+
+/**
+ * simple-git imports `spawn` from node:child_process and has no hook for another
+ * spawner, so in the main bundle its import resolves to electron/off-main-spawn.ts,
+ * which creates the process in the spawn host (utility process) instead of on
+ * Electron's UI thread. Every other importer keeps node:child_process.
+ */
+export function offMainChildProcessPlugin(source) {
+  const target = join(source, 'apps/desktop/electron/off-main-spawn.ts')
+  return {
+    name: 'simple-git-off-main-spawn',
+    setup(build) {
+      build.onResolve({ filter: /^(node:)?child_process$/ }, args =>
+        /[\\/]simple-git[\\/]/.test(args.importer) ? { path: target } : undefined)
+    },
+  }
+}
 
 /** Bundle main/preload using only the prepared workspace's compiler. */
 export async function bundleElectronMain({ source, out, stamp, dev = false }) {
@@ -70,6 +88,7 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
     entryPoints: [join(source, 'apps/desktop/electron/entry.ts')],
     format: 'esm',
     outfile: join(out, electronOutputs.main),
+    plugins: [offMainChildProcessPlugin(source)],
     banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" + envBanner },
   })
   await build({
@@ -85,6 +104,14 @@ export async function bundleElectronMain({ source, out, stamp, dev = false }) {
     entryPoints: [join(source, 'apps/desktop/electron/preview-guest-preload-entry.ts')],
     format: 'cjs',
     outfile: join(out, electronOutputs.previewGuestPreload),
+  })
+  // The utility process that creates child processes off the UI thread
+  // (electron/spawn-host.ts, started by main through off-main-spawn.ts).
+  await build({
+    ...common,
+    entryPoints: [join(source, 'apps/desktop/electron/spawn-host.ts')],
+    format: 'cjs',
+    outfile: join(out, electronOutputs.spawnHost),
   })
   return { stampClock: bakedStamp }
 }

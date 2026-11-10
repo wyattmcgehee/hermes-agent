@@ -1,5 +1,4 @@
 import {
-  execFile,
   type ExecFileOptions,
   execFileSync,
   spawn,
@@ -11,6 +10,8 @@ import {
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+import { execFile } from './off-main-spawn'
 
 /** Historical layouts still matter when uninstalling or migrating a source install. */
 export function resolveVenvDir(updateRoot: string): string {

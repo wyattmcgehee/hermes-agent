@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -9,6 +8,7 @@ import { CURL_TITLE_WRITE_OUT, parseCurlTitleResponse } from './link-title-curl'
 import { canonicalTitleCacheKey, isFetchableHttpUrl } from './link-title-url'
 import { isAuthWall, resolveLinkTitle } from './link-title-wall'
 import { createLinkTitleWindow, guardLinkTitleSession, readLinkTitleWindowTitle } from './link-title-window'
+import { spawn } from './off-main-spawn'
 import { decodeWebText } from './web-text-decoder'
 import { hiddenWindowsChildOptions } from './windows-child-options'
 

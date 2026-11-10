@@ -1,9 +1,9 @@
-import { execFile } from 'node:child_process'
 
 import { appVersionInfo } from './app-version'
 import { buildDesktopBackendEnv } from './backend-env'
 import { PROBE_TIMEOUT_MS } from './backend-probes'
 import type { InstallStamp } from './install-stamp'
+import { execFile } from './off-main-spawn'
 import { resolveInstallationLauncherAsync } from './updater-process'
 import { windowsShellCommand } from './windows-child-options'
 
