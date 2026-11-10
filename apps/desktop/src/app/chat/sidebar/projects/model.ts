@@ -158,6 +158,8 @@ export function useRepoWorktreeMap(
 ): [Record<string, HermesGitWorktree[]>, boolean] {
   const [map, setMap] = useState<Record<string, HermesGitWorktree[]>>({})
   const [loading, setLoading] = useState(false)
+  // The probe keys on the path LIST, not the array: the entered project is rebuilt on every tree refresh and live
+  // overlay, so a fresh array of the same paths must not re-run git worktree list for every repo in the project.
   const key = useMemo(() => pathListKey(repoPaths), [repoPaths])
   // Refetch when a worktree is added/removed so a new lane shows immediately.
   const refreshToken = useStore($worktreeRefreshToken)
@@ -171,7 +173,9 @@ export function useRepoWorktreeMap(
         ? desktopGitFor({ connectionId: ownerConnection, profile: ownerProfile })
         : desktopGit()
 
-    if (!enabled || !repoPaths.length || !git?.worktreeList) {
+    const paths = key ? key.split('\n') : []
+
+    if (!enabled || !paths.length || !git?.worktreeList) {
       setMap({})
       setLoading(false)
 
@@ -182,7 +186,7 @@ export function useRepoWorktreeMap(
 
     setLoading(true)
     // Bounded so a many-repo project doesn't spawn a `git` process per repo at once.
-    void mapPool(repoPaths, WORKTREE_PROBE_CONCURRENCY, async repoPath => {
+    void mapPool(paths, WORKTREE_PROBE_CONCURRENCY, async repoPath => {
       try {
         return [repoPath, await git.worktreeList(repoPath)] as const
       } catch {
@@ -195,7 +199,7 @@ export function useRepoWorktreeMap(
     return () => {
       cancelled = true
     }
-  }, [enabled, key, ownerConnection, ownerProfile, repoPaths, refreshToken])
+  }, [enabled, key, ownerConnection, ownerProfile, refreshToken])
 
   return [map, loading]
 }

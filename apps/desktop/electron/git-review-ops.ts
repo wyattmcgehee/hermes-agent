@@ -251,36 +251,44 @@ async function branchBase(git) {
 // the remote's HEAD, then common local trunk names. Null when none is found
 // (e.g. a fresh repo with only a feature branch). Used to offer "branch off the
 // trunk" regardless of which branch you're currently on.
-async function defaultBranchName(git) {
-  try {
-    const head = (await git.revparse(['--abbrev-ref', 'origin/HEAD'])).trim()
+//
+// One `for-each-ref` answers every candidate at once, so a status read spends one git process here, not one per
+// probe (each a spawn on the main thread and, on Windows, a Python host start). It also sees a missing ref: the old
+// per-ref `rev-parse --verify --quiet` failed with empty stderr, which simple-git resolves as success, so every repo
+// without origin/HEAD was named "main".
+const DEFAULT_BRANCH_REFS = ['refs/heads/main', 'refs/heads/master', 'refs/remotes/origin/main', 'refs/remotes/origin/master']
 
-    // "origin/main" → "main"; skip the bare "origin/HEAD" placeholder.
-    if (head && head !== 'origin/HEAD') {
-      return head.replace(/^origin\//, '')
-    }
+async function defaultBranchName(git) {
+  let listed
+
+  try {
+    listed = await git.raw(['for-each-ref', '--format=%(refname) %(symref)', 'refs/remotes/origin/HEAD', ...DEFAULT_BRANCH_REFS])
   } catch {
-    // No origin/HEAD configured.
+    return null
+  }
+
+  const refs = new Map()
+
+  for (const line of String(listed || '').split('\n')) {
+    const [name, symref = ''] = line.trim().split(' ')
+
+    if (name) {
+      refs.set(name, symref)
+    }
+  }
+
+  // origin/HEAD -> refs/remotes/origin/main → "main"; a non-symbolic origin/HEAD names no branch.
+  const head = refs.get('refs/remotes/origin/HEAD')
+
+  if (head) {
+    return head.replace(/^refs\/remotes\/origin\//, '')
   }
 
   // Prefer a local trunk, then a remote-only one (returns the clean name either
   // way) so "branch off main" works even before main is checked out locally.
-  for (const ref of [
-    'refs/heads/main',
-    'refs/heads/master',
-    'refs/remotes/origin/main',
-    'refs/remotes/origin/master'
-  ]) {
-    try {
-      await git.raw(['rev-parse', '--verify', '--quiet', ref])
+  const found = DEFAULT_BRANCH_REFS.find(ref => refs.has(ref))
 
-      return ref.replace(/^refs\/(?:heads|remotes\/origin)\//, '')
-    } catch {
-      // Ref doesn't exist; try the next candidate.
-    }
-  }
-
-  return null
+  return found ? found.replace(/^refs\/(?:heads|remotes\/origin)\//, '') : null
 }
 
 // A status file's single-letter classification, preferring the staged (index)
@@ -830,9 +838,15 @@ async function repoStatus(repoPath, gitBin) {
     conflicted: file.index === 'U' || file.working_dir === 'U'
   }))
 
+  // Independent reads once the tree is known to be a repo: in parallel, not one git process after another.
+  const [defaultBranch, summary] = await Promise.all([
+    defaultBranchName(git),
+    git.diffSummary(['HEAD']).catch(() => null) // no commits yet
+  ])
+
   const result = {
     branch: detached ? null : status.current || null,
-    defaultBranch: await defaultBranchName(git),
+    defaultBranch,
     detached,
     ahead: status.ahead || 0,
     behind: status.behind || 0,
@@ -847,12 +861,9 @@ async function repoStatus(repoPath, gitBin) {
   }
 
   // +/- vs HEAD (staged + unstaged tracked changes). No HEAD yet → leave 0.
-  try {
-    const summary = await git.diffSummary(['HEAD'])
+  if (summary) {
     result.added = summary.insertions
     result.removed = summary.deletions
-  } catch {
-    // No commits yet.
   }
 
   // `git diff HEAD` ignores untracked files, so a turn that only creates new
@@ -879,6 +890,7 @@ async function repoStatus(repoPath, gitBin) {
 
 export {
   branchBase,
+  defaultBranchName,
   fileDiffVsHead,
   gitFor,
   repoStatus,

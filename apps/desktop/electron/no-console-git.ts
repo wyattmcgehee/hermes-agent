@@ -129,11 +129,39 @@ export function ensureNoConsoleGitScript(dir = os.tmpdir()) {
   return scriptPath
 }
 
-export function windowsGitHost(isWindows = process.platform === 'win32'): NoConsoleGitHost | null {
+// Every git read (a status poll spawns several) asked for the host, and each ask ran the interpreter
+// search (`existsSync` per candidate) and re-read the host script, synchronously on the main thread.
+// A resolved host is kept for HOST_REVALIDATE_MS per input set (env overrides, configured roots,
+// temp dir), so a venv that appears or a temp cleaner that removes the script still heals within it.
+export const HOST_REVALIDATE_MS = 60_000
+
+let hostMemo: { host: NoConsoleGitHost; inputs: string; resolvedAt: number } | null = null
+
+/** Test seam: forget the resolved host. */
+export function resetWindowsGitHost(): void {
+  hostMemo = null
+}
+
+export function windowsGitHost(
+  isWindows = process.platform === 'win32',
+  now: () => number = Date.now
+): NoConsoleGitHost | null {
   if (!isWindows) {
     return null
   }
 
+  const inputs = JSON.stringify([
+    process.env.HERMES_DESKTOP_PYTHON ?? '',
+    process.env.HERMES_DESKTOP_HERMES_ROOT ?? '',
+    configuredRoots,
+    os.tmpdir()
+  ])
+
+  if (hostMemo && hostMemo.inputs === inputs && now() - hostMemo.resolvedAt < HOST_REVALIDATE_MS) {
+    return hostMemo.host
+  }
+
+  hostMemo = null
   const pythonBin = resolveNoConsolePython({ isWindows: true })
 
   if (!pythonBin) {
@@ -141,7 +169,11 @@ export function windowsGitHost(isWindows = process.platform === 'win32'): NoCons
   }
 
   try {
-    return { isWindows: true, pythonBin, scriptPath: ensureNoConsoleGitScript() }
+    const host: NoConsoleGitHost = { isWindows: true, pythonBin, scriptPath: ensureNoConsoleGitScript() }
+
+    hostMemo = { host, inputs, resolvedAt: now() }
+
+    return host
   } catch {
     return null
   }
